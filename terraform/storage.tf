@@ -63,4 +63,15 @@ resource "aws_s3_bucket_lifecycle_configuration" "images" {
       days = 90
     }
   }
+
+  rule {
+    id     = "delete-old-versions"
+    status = "Enabled"
+
+    filter {}
+
+    noncurrent_version_expiration {
+      noncurrent_days = 30
+    }
+  }
 }

@@ -8,6 +8,8 @@ crash.log
 *.tfvars.json
 !*.tfvars.example
 
+# Archivos zip generados (upload y crop)
+*.zip
 
 # Credenciales
 .env
@@ -18,7 +20,7 @@ credentials
 .aws/
 
 # Node.js
-node_modules/
+**/node_modules/
 
 # VSC
 .vscode/
