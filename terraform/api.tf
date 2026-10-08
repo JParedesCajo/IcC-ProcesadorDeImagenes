@@ -72,7 +72,7 @@ resource "aws_apigatewayv2_stage" "default" {
       httpMethod       = "$context.httpMethod"
       routeKey         = "$context.routeKey"
       status           = "$context.status"
-      responseLength   = "$context.respondeseLength"
+      responseLength   = "$context.responseLength"
       integrationError = "$context.integrationErrorMessage"
     })
   }
