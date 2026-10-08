@@ -6,6 +6,8 @@ const sharp = require("sharp");
 
 const s3 = new S3Client({});
 
+const MAX_SIZE = 10 * 1024 * 1024;
+
 exports.handler = async (event) => {
   const failures = [];
 
@@ -15,6 +17,7 @@ exports.handler = async (event) => {
 
       for (const s3Record of message.Records || []) {
         const bucket = s3Record.s3.bucket.name;
+
         const key = decodeURIComponent(
           s3Record.s3.object.key.replace(/\+/g, " ")
         );
@@ -23,6 +26,7 @@ exports.handler = async (event) => {
           continue;
         }
 
+        // Descargar la imagen original.
         const original = await s3.send(
           new GetObjectCommand({
             Bucket: bucket,
@@ -30,29 +34,59 @@ exports.handler = async (event) => {
           })
         );
 
+        if (original.ContentLength > MAX_SIZE) {
+          throw new Error("La imagen supera los 10 MB");
+        }
+
         const imageBuffer = Buffer.from(
           await original.Body.transformToByteArray()
         );
 
+        if (imageBuffer.length > MAX_SIZE) {
+          throw new Error("La imagen supera los 10 MB");
+        }
+
+        // Verificar que sea una imagen admitida.
+        const metadata = await sharp(imageBuffer).metadata();
+
+        const allowedFormats = ["jpeg", "png", "gif", "webp"];
+
+        if (!allowedFormats.includes(metadata.format)) {
+          throw new Error("Formato de imagen no permitido");
+        }
+
+        // Crear una máscara circular de 40x40.
         const circle = Buffer.from(
           '<svg width="40" height="40">' +
           '<circle cx="20" cy="20" r="20" fill="white"/>' +
           '</svg>'
         );
 
-        const result = await sharp(imageBuffer)
+        // Recortar la imagen y convertirla a PNG.
+        const result = await sharp(imageBuffer, {
+          limitInputPixels: 40000000
+        })
+          .rotate()
           .resize(40, 40, { fit: "cover" })
-          .composite([{
-            input: circle,
-            blend: "dest-in"
-          }])
+          .ensureAlpha()
+          .composite([
+            {
+              input: circle,
+              blend: "dest-in"
+            }
+          ])
           .png()
           .toBuffer();
 
+        // Crear nombre del archivo procesado.
         const filename = key.split("/").pop();
-        const outputName = filename.replace(/\.[^.]+$/, "") + ".png";
+
+        const outputName =
+          filename.replace(/\.[^.]+$/, "") + ".png";
+
         const outputKey = `processed/${outputName}`;
 
+        // Guardar el resultado en S3.
         await s3.send(
           new PutObjectCommand({
             Bucket: process.env.S3_BUCKET,
