@@ -25,6 +25,7 @@ resource "aws_vpc_endpoint" "sqs" {
   service_name        = "com.amazonaws.${var.aws_region}.sqs"
   vpc_endpoint_type   = "Interface"
   private_dns_enabled = true
+  count               = var.enable_sqs_endpoint ? 1 : 0
 
   subnet_ids = [
     aws_subnet.private_a.id,

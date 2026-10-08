@@ -31,3 +31,15 @@ variable "alert_email" {
   type        = string
   default     = ""
 }
+
+variable "enable_nat" {
+  description = "Habilitar los NAT Gateway"
+  type        = bool
+  default     = false
+}
+
+variable "enable_sqs_endpoint" {
+  description = "Habilitar el endpoint privado de SQS"
+  type        = bool
+  default     = false
+}
