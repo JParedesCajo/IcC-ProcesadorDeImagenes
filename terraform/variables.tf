@@ -20,3 +20,9 @@ variable "project_name" {
   type        = string
   default     = "icc-procesador-imagenes"
 }
+
+variable "alert_email" {
+  description = "Correo para recibir alertas SNS"
+  type        = string
+  default     = ""
+}
