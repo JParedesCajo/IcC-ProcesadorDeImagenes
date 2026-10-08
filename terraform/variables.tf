@@ -13,6 +13,11 @@ variable "environment" {
     condition     = contains(["dev", "qa", "prod"], var.environment)
     error_message = "El entorno debe ser dev, qa o prod."
   }
+
+  validation {
+    condition     = contains(["dev", "qa", "prod"], var.environment)
+    error_message = "El entorno debe ser dev, qa o prod."
+  }
 }
 
 variable "project_name" {

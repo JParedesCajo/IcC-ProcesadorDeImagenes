@@ -31,6 +31,7 @@ resource "aws_lambda_function" "upload" {
   function_name = "${var.project_name}-${var.environment}-upload"
   role          = aws_iam_role.upload.arn
   runtime       = "nodejs22.x"
+  architectures = ["x86_64"]
   handler       = "index.handler"
 
   filename         = data.archive_file.upload.output_path
@@ -70,6 +71,7 @@ resource "aws_lambda_function" "crop" {
   function_name = "${var.project_name}-${var.environment}-crop"
   role          = aws_iam_role.crop.arn
   runtime       = "nodejs22.x"
+  architectures = ["x86_64"]
   handler       = "index.handler"
 
   filename         = data.archive_file.crop.output_path
