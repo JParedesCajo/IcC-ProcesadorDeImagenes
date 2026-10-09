@@ -373,7 +373,7 @@ En DEV se verificó el rechazo de una solicitud que declaraba un archivo mayor a
 - CloudWatch registró `INFO Procesada: uploads/... -> processed/...`, confirmando el procesamiento de Lambda Crop.
 - Una ejecución observada duró **728,92 ms**, con **512 MB** configurados y **120 MB** de memoria máxima utilizada.
 - Se comprobó que el bucket versionado quedó vacío (`Versions: null`, `DeleteMarkers: null`) y el plan de destrucción indicó **50 recursos por destruir**.
-- **Falta incorporar la salida final de `terraform destroy` y la comprobación de `terraform state list` para declarar PROD completamente cerrado.**
+- Se confirmó que se ejecutó `terraform destroy` en PROD. Ejecutar `terraform workspace select prod` y `terraform state list` para verificar que el estado quedó vacío.
 
 
 ### 7.5. Matriz de validación
