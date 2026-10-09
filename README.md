@@ -1,20 +1,27 @@
 # Procesador de Imágenes en AWS con Terraform
 
-## 1. Descripción del proyecto
+**Repositorio:** https://github.com/JParedesCajo/IcC-ProcesadorDeImagenes  
+**Plataforma:** Amazon Web Services (AWS)  
+**Región:** `us-east-1`  
+**Entornos:** DEV, QA y PROD  
+**Estado actual:** DEV completado y destruido; QA desplegado y con flujo principal probado; PROD pendiente.
 
-Este proyecto implementa una arquitectura de procesamiento automático de imágenes en Amazon Web Services (AWS), utilizando **Terraform como herramienta de Infraestructura como Código (IaC)**.
+---
 
-La aplicación permite que un usuario solicite una autorización para subir una imagen, almacene el archivo original en Amazon S3 y obtenga automáticamente una versión procesada en formato PNG, recortada de forma circular y con dimensiones de **40 × 40 píxeles**.
+## 1. Descripción del laboratorio
 
-La solución utiliza servicios administrados de AWS y un mecanismo de procesamiento asíncrono mediante Amazon SQS y AWS Lambda.
+Este trabajo implementa una arquitectura de procesamiento automático de imágenes en AWS mediante **Terraform**, una herramienta de Infraestructura como Código (IaC). Permite solicitar una autorización temporal de subida, almacenar una imagen original en Amazon S3 y generar de manera asíncrona una versión PNG con **recorte circular de 40 × 40 píxeles**.
 
-**Repositorio:** https://github.com/JParedesCajo/IcC-ProcesadorDeImagenes
+La solución utiliza una API HTTP, funciones AWS Lambda, notificaciones de Amazon S3, una cola Amazon SQS y monitoreo mediante Amazon CloudWatch. El código de infraestructura es reutilizable para los entornos **DEV**, **QA** y **PROD**, cada uno con su propio estado de Terraform y recursos diferenciados.
 
-**Región de despliegue:** `us-east-1`
+### Estado de los entornos
 
-**Entornos contemplados:** DEV, QA y PROD.
+| Entorno | Despliegue | Pruebas funcionales | Destrucción | Situación |
+|---|---|---|---|---|
+| **DEV** | Completado (50 recursos) | Flujo principal exitoso | **Completada** | Cerrado |
+| **QA** | Completado (50 recursos) | API, subida JPEG y procesamiento exitosos | Pendiente | Activo al último registro |
+| **PROD** | Pendiente | Pendiente | No aplica | Por evaluar |
 
-**Estado actual:** entorno DEV desplegado y prueba funcional principal completada exitosamente.
 
 ---
 
@@ -22,20 +29,20 @@ La solución utiliza servicios administrados de AWS y un mecanismo de procesamie
 
 ### Objetivo general
 
-Diseñar, implementar y validar una infraestructura de procesamiento de imágenes en AWS mediante Terraform, aplicando principios de automatización, seguridad, modularidad y monitoreo.
+Diseñar, implementar y validar una infraestructura de procesamiento automático de imágenes en AWS mediante Terraform, aplicando automatización, separación de entornos, seguridad, procesamiento asíncrono y observabilidad.
 
 ### Objetivos específicos
 
-- Definir los recursos de infraestructura mediante archivos Terraform.
-- Separar los entornos DEV, QA y PROD mediante Terraform Workspaces.
-- Implementar una API HTTP para solicitar autorizaciones de subida.
-- Almacenar imágenes originales y procesadas en Amazon S3.
-- Utilizar Amazon SQS para desacoplar la recepción y el procesamiento.
-- Procesar imágenes mediante AWS Lambda y la biblioteca Sharp.
-- Implementar registros, métricas y alertas con CloudWatch y SNS.
-- Aplicar controles de seguridad y permisos IAM.
-- Validar el funcionamiento mediante pruebas reales.
-- Permitir la creación y eliminación controlada de la infraestructura.
+- Definir los recursos AWS mediante archivos Terraform versionados en Git.
+- Mantener entornos independientes mediante Terraform Workspaces.
+- Exponer un endpoint HTTP `POST /upload` para solicitar autorizaciones de subida.
+- Almacenar originales en `uploads/` y resultados en `processed/` dentro de Amazon S3.
+- Desacoplar la subida y el procesamiento mediante Amazon SQS.
+- Transformar imágenes con AWS Lambda, Node.js y Sharp.
+- Aplicar permisos IAM diferenciados, cifrado y bloqueo del acceso público a S3.
+- Registrar ejecuciones y configurar mecanismos de alerta mediante CloudWatch, DLQ y SNS.
+- Verificar el flujo de extremo a extremo en DEV y QA.
+- Demostrar la creación y destrucción controlada de recursos AWS mediante Terraform.
 
 ---
 
@@ -43,169 +50,124 @@ Diseñar, implementar y validar una infraestructura de procesamiento de imágene
 
 | Tecnología | Función |
 |---|---|
-| Terraform | Definición y despliegue de infraestructura |
-| AWS | Plataforma de servicios en la nube |
-| Amazon VPC | Red virtual de la arquitectura |
-| Amazon S3 | Almacenamiento de imágenes |
-| Amazon API Gateway | Exposición de la API HTTP |
-| AWS Lambda | Ejecución del procesamiento |
-| Amazon SQS | Comunicación asíncrona entre servicios |
-| Amazon CloudWatch | Registros, métricas y alarmas |
-| Amazon SNS | Notificaciones de alertas |
-| AWS IAM | Gestión de roles y permisos |
-| Node.js 22 | Entorno de ejecución de las funciones |
-| Sharp | Procesamiento y transformación de imágenes |
-| AWS CLI | Administración y validación desde terminal |
-| Git y GitHub | Control de versiones |
+| Terraform | Definición, planificación, despliegue y destrucción de infraestructura |
+| Amazon VPC | Red virtual, subredes y controles de conectividad |
+| Amazon S3 | Almacenamiento privado de imágenes originales y procesadas |
+| Amazon API Gateway (HTTP API) | Endpoint HTTP para solicitar subidas |
+| AWS Lambda | Autorización de subida y procesamiento de imágenes |
+| Amazon SQS | Cola de mensajes para procesamiento asíncrono |
+| Amazon CloudWatch | Logs, métricas y alarma de mensajes fallidos |
+| Amazon SNS | Destino de notificaciones de la alarma |
+| AWS IAM | Roles y políticas de acceso |
+| Node.js 22 | Entorno de ejecución de Lambda |
+| Sharp | Redimensionamiento y recorte circular |
+| AWS CLI | Operación y comprobaciones desde terminal |
+| Git y GitHub | Historial y documentación del proyecto |
+| PowerShell / VS Code | Entorno local de trabajo |
 
 ---
 
 ## 4. Arquitectura de la solución
 
-### 4.1. Flujo general
-
-La arquitectura sigue el siguiente recorrido:
+### 4.1. Flujo principal
 
 ```text
-                  USUARIO / CLIENTE
-                         |
-                         v
-                  API GATEWAY HTTP
-                    POST /upload
-                         |
-                         v
-                    LAMBDA UPLOAD
-               Validación y formulario
-                    POST firmado
-                         |
-                         v
-                    AMAZON S3
-                     uploads/
-                         |
-                  Notificación S3
-                         |
-                         v
-                    AMAZON SQS
-                  Cola de mensajes
-                         |
-                         v
-                     LAMBDA CROP
-                  Node.js + Sharp
-                         |
-                         v
-                    AMAZON S3
-                    processed/
-                  PNG circular 40x40
+USUARIO / CLIENTE
+      |
+      | POST /upload (nombre, tipo y tamaño)
+      v
+API GATEWAY HTTP
+      |
+      v
+LAMBDA UPLOAD
+      | Valida solicitud y devuelve POST firmado
+      v
+CLIENTE ENVÍA IMAGEN DIRECTAMENTE A S3
+      |
+      v
+S3: uploads/
+      |
+      | Notificación de creación de objeto
+      v
+SQS: cola principal
+      |
+      | Integración de eventos administrada por AWS
+      v
+LAMBDA CROP (Node.js + Sharp)
+      |
+      | Lee original y transforma imagen
+      v
+S3: processed/
+      |
+      v
+PNG circular de 40 x 40 píxeles
 ```
 
-La solución incluye adicionalmente:
+**Componentes complementarios:** DLQ para mensajes fallidos, alarma CloudWatch, tema SNS, roles IAM, VPC con dos zonas de disponibilidad y endpoint Gateway de S3.
 
-- Una cola de mensajes fallidos (DLQ).
-- Registros y métricas en Amazon CloudWatch.
-- Una alarma asociada a la DLQ.
-- Un tema Amazon SNS para notificaciones.
-- Una VPC con subredes públicas y privadas.
-- Un endpoint Gateway de S3 para acceso privado desde la VPC.
+### 4.2. Función de cada componente
 
-### 4.2. Descripción de los componentes
+**API Gateway.** Publica el endpoint `POST /upload` y envía las solicitudes a Lambda Upload. La API devuelve los datos necesarios para subir el archivo directamente a S3.
 
-**Amazon API Gateway**
+**Lambda Upload.** Comprueba el nombre, formato y tamaño declarado del archivo y genera un formulario **POST firmado** con una vigencia de 300 segundos. No transporta el contenido de la imagen a través de API Gateway.
 
-Expone el endpoint HTTP `POST /upload`, que permite solicitar una autorización temporal para subir una imagen.
+**Amazon S3.** Mantiene los originales en `uploads/` y los resultados en `processed/`. Se configura como bucket privado, con cifrado AES-256, versionado, reglas de ciclo de vida y CORS para la subida POST.
 
-**Lambda Upload**
+**Amazon SQS.** Recibe las notificaciones de creación de objetos del prefijo `uploads/` y permite desacoplar la recepción de imágenes del procesamiento. Una DLQ conserva mensajes que superan los intentos configurados.
 
-Recibe los datos de la imagen, valida el formato y el tamaño declarado, y genera un formulario POST firmado de Amazon S3.
+**Lambda Crop.** Consume eventos de SQS, obtiene la imagen desde S3, valida el contenido, realiza el recorte circular con Sharp y guarda el PNG en `processed/`.
 
-**Amazon S3**
+**CloudWatch.** Registra la ejecución de las funciones, su duración, consumo de memoria y errores. También incorpora una alarma vinculada a la DLQ.
 
-Almacena los archivos en dos prefijos:
+**SNS.** Proporciona un destino para notificaciones de la alarma. La entrega de correos requiere una suscripción configurada y confirmada.
 
-- `uploads/`: imágenes originales.
-- `processed/`: imágenes transformadas.
-
-El bucket utiliza controles de acceso público, cifrado del lado del servidor y versionado.
-
-**Amazon SQS**
-
-Recibe las notificaciones generadas cuando se almacena una imagen en el prefijo `uploads/`. Permite desacoplar la subida de imágenes del procesamiento.
-
-**Lambda Crop**
-
-Obtiene las imágenes originales, utiliza Sharp para redimensionarlas y aplicar un recorte circular, y guarda el resultado como PNG.
-
-**Amazon CloudWatch**
-
-Centraliza los registros de las funciones Lambda y permite observar la ejecución, duración, memoria utilizada y posibles errores.
-
-**Amazon SNS**
-
-Se utiliza como destino de notificaciones para la alarma relacionada con mensajes acumulados en la DLQ.
-
-**Amazon VPC**
-
-Proporciona una red aislada con subredes públicas y privadas distribuidas entre dos zonas de disponibilidad.
-
-**IAM**
-
-Define los permisos necesarios para que cada función acceda únicamente a los recursos requeridos.
+**VPC e IAM.** La VPC organiza las subredes y el acceso de red; IAM restringe los permisos de cada función a las operaciones necesarias.
 
 ---
 
-## 5. Organización del proyecto
+## 5. Organización del repositorio
 
 ```text
 IcC-ProcesadorDeImagenes/
-|
-|-- terraform/
-|   |-- environments/
-|   |
-|   |-- lambda/
-|   |   |-- upload/
-|   |   |   |-- index.js
-|   |   |   |-- package.json
-|   |   |   `-- package-lock.json
-|   |   |
-|   |   `-- crop/
-|   |       |-- index.js
-|   |       |-- package.json
-|   |       `-- package-lock.json
-|   |
-|   |-- providers.tf
-|   |-- variables.tf
-|   |-- main.tf
-|   |-- network.tf
-|   |-- nat.tf
-|   |-- endpoints.tf
-|   |-- storage.tf
-|   |-- queues.tf
-|   |-- iam.tf
-|   |-- lambda.tf
-|   |-- api.tf
-|   |-- monitoring.tf
-|   `-- outputs.tf
-|
-|-- docs/
-|   `-- evidencias/
-|       `-- dev/
-|
-|-- .gitignore
-`-- README.md
+├── terraform/
+│   ├── environments/
+│   ├── lambda/
+│   │   ├── upload/
+│   │   │   ├── index.js
+│   │   │   ├── package.json
+│   │   │   └── package-lock.json
+│   │   └── crop/
+│   │       ├── index.js
+│   │       ├── package.json
+│   │       └── package-lock.json
+│   ├── providers.tf
+│   ├── variables.tf
+│   ├── main.tf
+│   ├── network.tf
+│   ├── nat.tf
+│   ├── endpoints.tf
+│   ├── storage.tf
+│   ├── queues.tf
+│   ├── iam.tf
+│   ├── lambda.tf
+│   ├── api.tf
+│   ├── monitoring.tf
+│   └── outputs.tf
+├── docs/
+│   └── evidencias/
+│       ├── dev/
+│       └── qa/
+├── .gitignore
+└── README.md
 ```
 
-Los archivos `.tf` separan la infraestructura por responsabilidades para facilitar su mantenimiento.
-
-Los directorios `node_modules/`, `.terraform/`, los archivos de estado y los planes de Terraform no deben incluirse en el repositorio.
+La estructura separa la configuración de red, almacenamiento, mensajería, funciones, API, permisos y monitoreo. Los paquetes de dependencias locales, planes y estados no deben publicarse en Git.
 
 ---
 
-## 6. Configuración de la red
+## 6. Configuración de red
 
-La arquitectura utiliza una VPC con el rango:
-
-`10.0.0.0/16`
-
-Se contemplan subredes públicas y privadas distribuidas en dos zonas de disponibilidad de AWS.
+La VPC utiliza el bloque `10.0.0.0/16` y subredes en dos zonas de disponibilidad.
 
 | Subred | CIDR | Zona |
 |---|---|---|
@@ -214,80 +176,60 @@ Se contemplan subredes públicas y privadas distribuidas en dos zonas de disponi
 | Privada A | `10.0.11.0/24` | `us-east-1a` |
 | Privada B | `10.0.12.0/24` | `us-east-1b` |
 
-### Configuración de DEV
+### Configuración aplicada en DEV y QA
 
-Para reducir el consumo de créditos durante las pruebas, el entorno DEV utiliza:
+| Elemento | Configuración |
+|---|---|
+| NAT Gateway | Deshabilitado (`enable_nat = false`) |
+| Endpoint Interface SQS | Deshabilitado (`enable_sqs_endpoint = false`) |
+| Endpoint Gateway S3 | Habilitado |
+| Lambda Crop | Asociada a subredes privadas |
+| Región | `us-east-1` |
 
-- NAT Gateway deshabilitado.
-- Endpoint Interface de SQS deshabilitado.
-- Endpoint Gateway de S3 habilitado.
+El endpoint Gateway permite el acceso privado a S3 desde las subredes configuradas. La integración de SQS con Lambda es administrada por AWS, por lo que el consumo de eventos no requiere que la función inicie una conexión directa a SQS. Sin NAT, las funciones en subredes privadas no disponen de salida general a Internet.
 
-Las funciones Lambda Crop pueden acceder a S3 mediante el endpoint Gateway asociado a las tablas de rutas privadas.
-
-La integración de eventos de SQS con Lambda es administrada por AWS y no requiere que Lambda establezca directamente una conexión a SQS para recibir los lotes de mensajes.
-
-La ausencia de NAT limita las conexiones salientes generales desde las subredes privadas. Cualquier dependencia futura de servicios externos deberá considerar esta restricción.
+**PROD:** sus parámetros se revisarán antes del despliegue. No se presupone que deba habilitarse NAT o un endpoint Interface sin evaluar necesidad, costo y restricciones de la cuenta.
 
 ---
 
-## 7. Seguridad
+## 7. Seguridad y validación
 
-La arquitectura incorpora las siguientes medidas:
+### 7.1. Almacenamiento
 
-### 7.1. Almacenamiento privado
-
-El bucket S3 tiene bloqueado el acceso público y utiliza cifrado del lado del servidor mediante AES-256.
+- Bloqueo de acceso público en S3.
+- Cifrado del lado del servidor mediante AES-256.
+- Versionado de objetos y reglas de ciclo de vida.
+- Prefijos diferenciados para originales y resultados.
 
 ### 7.2. Permisos IAM
 
-Se emplean roles específicos para las funciones Lambda.
+- **Lambda Upload:** autorización de escritura en `uploads/`.
+- **Lambda Crop:** lectura de `uploads/`, escritura en `processed/` y permisos requeridos para la integración con SQS.
+- Las credenciales de AWS se configuran localmente mediante el perfil `terraform-lab`; no deben incluirse en Git.
 
-**Lambda Upload:**
+### 7.3. Restricciones de archivos
 
-Permisos de escritura sobre el prefijo `uploads/` del bucket.
+- Formatos contemplados: JPEG, PNG, GIF y WEBP.
+- Límite declarado de tamaño: **10 MiB** (`10 485 760` bytes).
+- Formulario firmado con vigencia de **300 segundos**.
+- Comprobación del formato y tamaño durante el procesamiento.
+- El límite del POST firmado se aplica al cuerpo multipart completo, incluidos sus campos; por ello, el archivo efectivo máximo puede ser ligeramente menor que 10 MiB.
 
-**Lambda Crop:**
+### 7.4. Consideraciones adicionales
 
-Permisos para leer objetos de `uploads/`, escribir resultados en `processed/` y trabajar con los mensajes de la cola SQS.
-
-### 7.3. Validación de archivos
-
-La aplicación contempla:
-
-- Formatos JPEG, PNG, GIF y WEBP.
-- Límite de tamaño declarado de 10 MB.
-- Validación del archivo durante el procesamiento.
-- Autorizaciones temporales para subir archivos a S3.
-
-El formulario firmado utiliza una condición de tamaño de contenido. Al tratarse de una solicitud multipart, el tamaño total incluye también los campos del formulario.
-
-### 7.4. Control de acceso a la red
-
-Lambda Crop utiliza subredes privadas de la VPC.
-
-El acceso a S3 se realiza mediante un endpoint Gateway.
-
-### 7.5. Protección de credenciales
-
-Las credenciales AWS no se almacenan en el código fuente. Se utiliza un perfil local de AWS CLI.
-
-Los archivos de estado de Terraform deben protegerse porque pueden contener información sensible de la infraestructura.
+La API genera autorizaciones temporales, pero ello no sustituye controles de autenticación, cuotas o protección contra abuso para una exposición pública de producción. La configuración de seguridad y costos debe revisarse antes de desplegar PROD.
 
 ---
 
 ## 8. Requisitos previos
 
-Para trabajar con el proyecto se requiere:
+- Cuenta AWS autorizada y permisos IAM suficientes.
+- AWS CLI configurado con el perfil `terraform-lab`.
+- Terraform, Node.js, npm y Git instalados.
+- PowerShell y Visual Studio Code, o herramientas equivalentes.
+- Dependencias de las funciones Lambda preparadas y paquetes ZIP compatibles con su entorno de ejecución.
 
-- Una cuenta AWS con permisos adecuados.
-- AWS CLI configurado.
-- Terraform instalado.
-- Node.js y npm.
-- Git.
-- Visual Studio Code o un editor equivalente.
-- PowerShell, para seguir los comandos de este documento en Windows.
-
-### Verificar herramientas
+Comprobar las herramientas:
 
 ```powershell
 terraform version
@@ -297,284 +239,335 @@ npm --version
 git --version
 ```
 
-### Verificar identidad AWS
+Comprobar la identidad AWS:
 
 ```powershell
 aws sts get-caller-identity --profile terraform-lab
 ```
 
-Antes de desplegar, debe confirmarse que la cuenta y el usuario corresponden al entorno autorizado para las pruebas.
+**Antes de aplicar cualquier plan:** verificar la cuenta, región, workspace y presupuesto disponible.
 
 ---
 
-## 9. Configuración de Terraform
+## 9. Operación con Terraform
 
-El proveedor AWS se configura en `providers.tf`.
+Los comandos siguientes se ejecutan desde la carpeta `terraform/`.
 
-La región utilizada es `us-east-1` y el perfil local de AWS es `terraform-lab`.
-
-### Inicialización
-
-Desde la carpeta `terraform`:
+### 9.1. Inicializar y validar
 
 ```powershell
 terraform init
-```
-
-### Validación
-
-```powershell
 terraform fmt -recursive
 terraform validate
 ```
 
-### Entornos mediante Workspaces
-
-Los entornos previstos son:
-
-- `dev`: desarrollo y pruebas iniciales.
-- `qa`: pruebas de calidad.
-- `prod`: entorno de producción.
-
-Crear el workspace DEV, si todavía no existe:
+### 9.2. Administrar workspaces
 
 ```powershell
-terraform workspace new dev
-```
-
-Seleccionarlo:
-
-```powershell
-terraform workspace select dev
-```
-
-Confirmar el workspace:
-
-```powershell
+terraform workspace list
 terraform workspace show
 ```
 
-El resultado esperado para el entorno de desarrollo es `dev`.
-
-**Importante:** antes de ejecutar un despliegue, el valor de la variable `environment` debe corresponder al workspace seleccionado.
-
----
-
-## 10. Despliegue del entorno DEV
-
-### 10.1. Generar el plan
+Para crear un workspace que aún no exista:
 
 ```powershell
-terraform plan '-var=environment=dev' '-out=dev.tfplan'
+terraform workspace new qa
 ```
 
-El plan debe revisarse antes de aplicar cambios.
-
-Durante la preparación del entorno DEV se obtuvo un plan de 50 recursos por crear, sin NAT Gateway ni endpoint Interface de SQS.
-
-### 10.2. Aplicar la infraestructura
+Para seleccionar uno existente:
 
 ```powershell
-terraform apply "dev.tfplan"
+terraform workspace select qa
 ```
 
-Este comando crea o modifica recursos reales de AWS y puede consumir créditos.
+Los workspaces `dev`, `qa` y `prod` utilizan estados separados. **El workspace seleccionado y `-var=environment=...` deben coincidir.** La comprobación declarativa del proyecto no sustituye esta revisión manual.
 
-### 10.3. Consultar recursos
+En un workspace nuevo, `terraform state list` puede indicar `No state file was found!`; esto es normal antes del primer despliegue.
+
+### 9.3. Generar y revisar un plan
+
+Ejemplo para QA:
 
 ```powershell
-terraform state list
+terraform workspace select qa
+terraform plan '-var=environment=qa' '-out=qa.tfplan'
+terraform show -no-color qa.tfplan |
+    Select-String 'aws_nat_gateway|aws_eip|aws_vpc_endpoint|Plan:'
 ```
 
-### 10.4. Consultar outputs
+Los planes `.tfplan` pueden contener información sensible y **no deben subirse al repositorio**.
+
+### 9.4. Aplicar un plan aprobado
+
+```powershell
+terraform apply "qa.tfplan"
+```
+
+Este comando crea recursos reales de AWS y puede consumir créditos. Debe ejecutarse únicamente después de revisar el plan y autorizar el despliegue.
+
+### 9.5. Consultar outputs
 
 ```powershell
 terraform output
+terraform output -raw api_url
+terraform output -raw s3_bucket_name
 ```
 
-Los outputs configurados incluyen:
+Outputs definidos:
 
 - `api_url`
 - `s3_bucket_name`
 - `sqs_queue_url`
 - `sns_topic_arn`
 
-Para obtener un valor específico:
+---
+
+## 10. Despliegue y validación de DEV
+
+**Fecha de las pruebas:** 8 de octubre de 2026.  
+**Workspace:** `dev`.  
+**Región:** `us-east-1`.
+
+### 10.1. Despliegue
 
 ```powershell
-terraform output -raw api_url
+terraform workspace select dev
+terraform plan '-var=environment=dev' '-out=dev.tfplan'
+terraform apply "dev.tfplan"
+```
+
+**Resultado registrado:** 50 recursos creados, con NAT Gateway y endpoint Interface de SQS deshabilitados.
+
+### 10.2. Pruebas realizadas
+
+| ID | Prueba | Resultado DEV |
+|---|---|---|
+| CP-01 | Solicitud POST a API Gateway | Exitosa |
+| CP-02 | Rechazo de tamaño declarado superior al límite | Exitoso |
+| CP-03 | Subida de imagen JPEG mediante POST firmado | Exitosa |
+| CP-04 | Almacenamiento de original en `uploads/` | Exitoso |
+| CP-05 | Procesamiento S3 → SQS → Lambda Crop | Exitoso |
+| CP-06 | Generación de PNG en `processed/` | Exitoso |
+| CP-07 | Recorte circular visual | Exitoso |
+| CP-08 | Registro de procesamiento en CloudWatch | Exitoso |
+| CP-09 | Comprobación independiente de dimensiones exactas | No documentada |
+| CP-10 | Envío de errores a DLQ y alerta SNS | No probado |
+| CP-11 | Rendimiento bajo carga | No probado |
+
+Se utilizó una imagen de prueba local denominada `test.jpeg`. El flujo produjo una imagen PNG circular, que se descargó y comparó visualmente con el original.
+
+### 10.3. Evidencia de CloudWatch
+
+En los registros de `icc-procesador-imagenes-dev-crop` se observó un mensaje `INFO Procesada` con la ruta del objeto original y la del resultado.
+
+| Métrica observada | Valor |
+|---|---|
+| Runtime | Node.js 22 |
+| Duración de la ejecución observada | 858,10 ms |
+| Memoria configurada | 512 MB |
+| Memoria máxima utilizada | 127 MB |
+| Resultado | Procesamiento exitoso |
+
+Los valores anteriores corresponden a **una ejecución concreta**; no representan pruebas de rendimiento ni un SLA.
+
+### 10.4. Destrucción de DEV
+
+Tras guardar las evidencias, se revisó un plan de **50 recursos por destruir** y se vació el bucket S3 versionado.
+
+La primera ejecución de `terraform destroy` eliminó la mayor parte de la infraestructura, pero dejó pendientes dos roles IAM por falta del permiso:
+
+```text
+iam:ListInstanceProfilesForRole
+```
+
+Después de actualizar la política IAM utilizada por el usuario de Terraform, se reintentó la destrucción y se obtuvo:
+
+```text
+Plan: 0 to add, 0 to change, 2 to destroy.
+Destroy complete! Resources: 2 destroyed.
+```
+
+**Resultado final:** cierre de DEV completado mediante Terraform. El mensaje final indica los **2 recursos restantes**; los demás ya se habían eliminado en el intento anterior. Para confirmar el estado vacío se puede ejecutar, con `dev` seleccionado:
+
+```powershell
+terraform state list
 ```
 
 ---
 
-## 11. Despliegue de QA y PROD
+## 11. Despliegue y pruebas funcionales de QA
 
-Los workspaces permiten mantener estados independientes para distintos entornos.
+**Fecha de las pruebas:** 8 de octubre de 2026 (hora local registrada en las evidencias).  
+**Workspace:** `qa`.  
+**Región:** `us-east-1`.
 
-### QA
+### 11.1. Preparación y despliegue
+
+Se seleccionó el workspace `qa`, que existía sin estado de infraestructura. Se verificó que:
+
+```hcl
+enable_nat          = false
+enable_sqs_endpoint = false
+```
+
+Comandos utilizados:
 
 ```powershell
 terraform workspace select qa
+terraform validate
 terraform plan '-var=environment=qa' '-out=qa.tfplan'
+terraform apply "qa.tfplan"
 ```
 
-### PROD
+**Resultado confirmado:**
+
+```text
+Plan: 50 to add, 0 to change, 0 to destroy.
+Apply complete! Resources: 50 added, 0 changed, 0 destroyed.
+```
+
+Se crearon recursos propios de QA, entre ellos su API HTTP, bucket S3, colas SQS, funciones Lambda y componentes de monitoreo.
+
+### 11.2. Prueba de API Gateway y Lambda Upload
+
+Se envió una solicitud HTTP `POST /upload` con los datos de la imagen JPEG. La API respondió con:
+
+- Mensaje de formulario generado.
+- Clave única de almacenamiento en `uploads/`.
+- URL de subida a S3.
+- Campos del formulario POST firmado.
+- Tiempo de expiración de 300 segundos.
+
+**Resultado:** exitoso. No deben publicarse los campos temporales `Policy`, `X-Amz-Signature`, `X-Amz-Security-Token` ni credenciales en capturas o documentación.
+
+### 11.3. Subida de JPEG a Amazon S3
+
+La subida se realizó con `curl.exe` utilizando los campos devueltos por Lambda Upload.
+
+**Respuesta recibida:**
+
+```text
+HTTP/1.1 204 No Content
+```
+
+La respuesta confirma que S3 aceptó la solicitud de subida.
+
+### 11.4. Procesamiento de la imagen
+
+La consulta al bucket S3 de QA mostró ambos objetos:
+
+| Prefijo | Formato | Tamaño |
+|---|---|---:|
+| `uploads/` | JPEG | **102 069 bytes** |
+| `processed/` | PNG | **4 525 bytes** |
+
+La presencia del PNG correspondiente al JPEG subido confirma el procesamiento del flujo principal. La inspección visual de la forma circular y los registros de CloudWatch deben consignarse como verificaciones adicionales cuando estén documentadas en las capturas.
+
+### 11.5. Matriz de QA
+
+| ID | Caso de prueba | Estado QA |
+|---|---|---|
+| QA-01 | Despliegue mediante Terraform | **Exitoso** |
+| QA-02 | Solicitud HTTP a `/upload` | **Exitoso** |
+| QA-03 | Generación de POST firmado | **Exitoso** |
+| QA-04 | Subida de JPEG a S3 (HTTP 204) | **Exitoso** |
+| QA-05 | Creación del original en `uploads/` | **Exitoso** |
+| QA-06 | Generación de PNG en `processed/` | **Exitoso** |
+| QA-07 | Inspección visual del PNG circular | Captura realizada; resultado por consignar |
+| QA-08 | Registros de Lambda Crop en CloudWatch | Captura realizada; resultado por consignar |
+| QA-09 | Verificación independiente de 40 × 40 píxeles | Pendiente de registro |
+| QA-10 | Prueba de DLQ, SNS y fallos forzados | Pendiente |
+| QA-11 | Prueba de carga | Pendiente |
+
+**Estado de cierre:** al último avance registrado, QA continúa desplegado. Su destrucción aún no se ha confirmado.
+
+---
+
+## 12. Procedimiento de prueba reproducible
+
+Los ejemplos siguientes usan PowerShell desde `terraform/`, con el workspace del entorno que se desea probar ya seleccionado.
+
+### 12.1. Obtener la API y localizar la imagen
 
 ```powershell
-terraform workspace select prod
-terraform plan '-var=environment=prod' '-out=prod.tfplan'
+$apiUrl = terraform output -raw api_url
+$imagePath = (Resolve-Path "..\test.jpeg").Path
+Test-Path $imagePath
 ```
 
-Si un workspace todavía no existe, debe crearse antes de seleccionarlo.
+El último comando debe devolver `True`.
 
-**Estado:** QA y PROD se encuentran contemplados en el diseño, pero no se documentan aquí como desplegados o validados.
+### 12.2. Solicitar formulario firmado
 
-Antes de aplicar cualquiera de estos entornos se deben revisar los costos, las variables y los recursos que se crearán.
+```powershell
+$body = @{
+    fileName    = "test.jpeg"
+    contentType = "image/jpeg"
+    size        = (Get-Item $imagePath).Length
+} | ConvertTo-Json
 
----
+$response = Invoke-RestMethod `
+    -Uri $apiUrl `
+    -Method POST `
+    -ContentType "application/json" `
+    -Body $body
 
-## 12. Pruebas funcionales realizadas en DEV
+Write-Host "Autorización recibida para:" $response.key
+```
 
-**Fecha:** 8 de octubre de 2026.
+No imprimir ni publicar el objeto `$response.fields` completo.
 
-**Entorno:** DEV.
+### 12.3. Subir a S3
 
-**Región:** `us-east-1`.
+Ejecutar dentro de los 300 segundos de vigencia de la firma:
 
-**Resultado general:** prueba funcional principal exitosa.
+```powershell
+$curlArgs = @("-sS", "-i", "-X", "POST")
 
-### 12.1. Prueba de API Gateway
+foreach ($field in $response.fields.PSObject.Properties) {
+    $curlArgs += @("-F", "$($field.Name)=$($field.Value)")
+}
 
-Se realizó una solicitud HTTP POST al endpoint `/upload`, enviando información sobre el tipo de archivo y su tamaño.
+$curlArgs += @(
+    "-F", "file=@$imagePath;type=image/jpeg",
+    $response.uploadUrl
+)
 
-La API respondió con los datos necesarios para realizar una subida autorizada a Amazon S3.
+& curl.exe @curlArgs
+```
 
-**Resultado:** exitoso.
+Se espera una respuesta de S3 como `HTTP/1.1 204 No Content` o `201 Created`, según la configuración del formulario.
 
-### 12.2. Validación de tamaño
-
-Se envió una solicitud que declaraba una imagen superior al límite de 10 MB.
-
-La API rechazó la solicitud.
-
-**Resultado:** exitoso para la validación del tamaño declarado.
-
-### 12.3. Subida de imagen JPEG
-
-Se utilizó una imagen de prueba llamada `test.jpeg`.
-
-El cliente solicitó un formulario firmado y realizó una subida HTTP POST a Amazon S3.
-
-El archivo se almacenó correctamente bajo el prefijo `uploads/`.
-
-**Resultado:** exitoso.
-
-### 12.4. Procesamiento asíncrono
-
-La notificación del objeto almacenado activó el flujo de procesamiento configurado mediante SQS y Lambda Crop.
-
-Se generó el archivo correspondiente en el prefijo `processed/`.
-
-**Resultado:** exitoso.
-
-### 12.5. Recorte circular
-
-Se descargó el archivo procesado y se comparó visualmente con la imagen original.
-
-La salida presentó un recorte circular de la fotografía.
-
-La configuración de la función establece dimensiones de 40 × 40 píxeles.
-
-**Resultado:** recorte visual exitoso. La verificación independiente de las dimensiones exactas puede registrarse como evidencia adicional.
-
-### 12.6. Monitoreo en CloudWatch
-
-Se consultaron los registros de la función:
-
-`icc-procesador-imagenes-dev-crop`
-
-Los registros incluyeron un mensaje `INFO Procesada`, confirmando la transformación del objeto original y la creación del PNG.
-
-No se observaron errores en la ejecución de procesamiento registrada.
-
-**Resultado:** exitoso.
-
----
-
-## 13. Matriz de pruebas
-
-| ID | Caso de prueba | Resultado esperado | Estado |
-|---|---|---|---|
-| CP-01 | Solicitud a API Gateway | Generar formulario firmado | Exitoso |
-| CP-02 | Solicitud mayor de 10 MB | Rechazar tamaño declarado | Exitoso |
-| CP-03 | Subida de imagen JPEG | Almacenar en `uploads/` | Exitoso |
-| CP-04 | Procesamiento con SQS y Lambda | Generar archivo en `processed/` | Exitoso |
-| CP-05 | Recorte circular | Producir imagen circular | Exitoso visualmente |
-| CP-06 | Registros de CloudWatch | Registrar la ejecución | Exitoso |
-| CP-07 | Dimensiones exactas | Confirmar 40 × 40 píxeles | Pendiente de comprobación independiente |
-| CP-08 | Envío a DLQ ante errores | Retener mensajes fallidos | Pendiente |
-| CP-09 | Alerta SNS | Notificar condición de alarma | Pendiente |
-| CP-10 | Rendimiento bajo carga | Cumplir objetivos definidos | Pendiente |
-
----
-
-## 14. Resultados técnicos obtenidos
-
-### Imagen original
-
-- Nombre local: `test.jpeg`.
-- Formato almacenado: JPEG.
-- Tamaño almacenado: **120 669 bytes**.
-- Prefijo: `uploads/`.
-
-### Imagen procesada
-
-- Formato: PNG.
-- Tamaño almacenado: **4 525 bytes**.
-- Prefijo: `processed/`.
-- Recorte: circular.
-
-### Ejecución de Lambda Crop
-
-| Métrica | Resultado |
-|---|---|
-| Runtime | Node.js 22 |
-| Duración | 858,10 ms |
-| Memoria configurada | 512 MB |
-| Memoria máxima utilizada | 127 MB |
-| Estado de procesamiento observado | Exitoso |
-
-Los valores corresponden a una ejecución específica de la función. No representan una medición de rendimiento bajo carga ni garantizan tiempos de respuesta para futuras solicitudes.
-
----
-
-## 15. Evidencias del entorno DEV
-
-Las capturas se organizan en:
-
-`docs/evidencias/dev/`
-
-| Archivo | Evidencia |
-|---|---|
-| `01-terraform-apply.png` | Despliegue de Terraform |
-| `02-terraform-outputs.png` | Outputs de los recursos |
-| `03-api-upload.png` | Respuesta de API Gateway |
-| `04-validacion-10mb.png` | Rechazo de tamaño superior al límite |
-| `05-s3-objetos.png` | Archivos originales y procesados en S3 |
-| `06-comparacion-imagenes.png` | Comparación de imagen original y PNG circular |
-| `07-cloudwatch-crop.png` | Registros de procesamiento en CloudWatch |
-
-Los nombres anteriores corresponden a la organización prevista. Deben agregarse los archivos de captura reales para completar esta sección.
-
-### Comprobación de los objetos S3
+### 12.4. Comprobar originales y resultados
 
 ```powershell
 $bucket = terraform output -raw s3_bucket_name
-
 aws s3 ls "s3://$bucket/" --recursive --profile terraform-lab
 ```
 
-### Consulta de registros
+### 12.5. Descargar el resultado
+
+```powershell
+$outputKey = $response.key -replace '^uploads/', 'processed/'
+$outputKey = $outputKey -replace '\.[^.]+$', '.png'
+
+aws s3 cp "s3://$bucket/$outputKey" ".\resultado-qa.png" `
+    --profile terraform-lab
+```
+
+Abrir `resultado-qa.png` en VS Code para inspeccionar el resultado. Para comprobar dimensiones exactas, utilizar una herramienta de inspección de imágenes y registrar el resultado.
+
+### 12.6. Consultar CloudWatch
+
+Para QA:
+
+```powershell
+aws logs tail "/aws/lambda/icc-procesador-imagenes-qa-crop" `
+    --since 30m `
+    --profile terraform-lab
+```
+
+Para DEV (solo mientras el entorno exista y conserve sus logs):
 
 ```powershell
 aws logs tail "/aws/lambda/icc-procesador-imagenes-dev-crop" `
@@ -582,192 +575,243 @@ aws logs tail "/aws/lambda/icc-procesador-imagenes-dev-crop" `
     --profile terraform-lab
 ```
 
+Buscar mensajes de procesamiento, excepciones, duración y memoria utilizada.
+
 ---
 
-## 16. Monitoreo y manejo de errores
+## 13. Evidencias del laboratorio
 
-La arquitectura incorpora mecanismos para observar errores y gestionar mensajes que no pueden procesarse correctamente.
+Las evidencias se organizan por entorno. Antes de publicar capturas, **ocultar firmas temporales, tokens, credenciales y cualquier dato sensible**.
+
+### 13.1. DEV
+
+Ruta: `docs/evidencias/dev/`.
+
+| Evidencia sugerida | Contenido |
+|---|---|
+| `01-terraform-apply.png` | Despliegue DEV |
+| `02-terraform-outputs.png` | Outputs de Terraform |
+| `03-api-upload.png` | Respuesta de la API sin credenciales temporales |
+| `04-validacion-10mb.png` | Rechazo de tamaño declarado superior al límite |
+| `05-s3-objetos.png` | Original y PNG en S3 |
+| `06-comparacion-imagenes.png` | Comparación visual |
+| `07-cloudwatch-crop.png` | Registros de Lambda Crop |
+| `08-plan-destroy-dev.png` | Plan de destrucción |
+| `09-destroy-complete.png` | Finalización del cierre DEV |
+
+Los nombres son una **convención recomendada**: comprobar los nombres reales antes de crear enlaces en GitHub.
+
+### 13.2. QA
+
+Ruta: `docs/evidencias/qa/`.
+
+| Evidencia sugerida | Contenido |
+|---|---|
+| `01-terraform-apply.png` | `Apply complete! Resources: 50 added` |
+| `02-api-upload.png` | Formulario generado por API Gateway / Lambda Upload, con campos sensibles ocultos |
+| `03-s3-archivos.png` | JPEG original y PNG procesado |
+| `04-resultado-qa.png` | Imagen circular descargada |
+| `05-cloudwatch.png` | Registros de Lambda Crop, si fueron verificados |
+| `06-plan-destroy-qa.png` | Plan de destrucción, pendiente |
+| `07-destroy-complete-qa.png` | Destrucción completa, pendiente |
+
+---
+
+## 14. Monitoreo y manejo de errores
 
 ### CloudWatch Logs
 
-Permite consultar los registros de Lambda Upload y Lambda Crop.
+Los grupos de logs de Lambda permiten consultar invocaciones, excepciones, duración y consumo de memoria. La retención configurada es de **14 días**.
 
-La retención configurada para los grupos de registros es de 14 días.
+### Cola principal de SQS
 
-### Amazon SQS
-
-La cola principal recibe las notificaciones de S3 y entrega los mensajes a Lambda Crop.
-
-La función informa los elementos fallidos de un lote para permitir su tratamiento individual.
+Recibe notificaciones de S3 y entrega lotes a Lambda Crop. La función informa fallos individuales del lote mediante la respuesta `batchItemFailures`, evitando marcar como fallidos todos los elementos cuando solo algunos fallan.
 
 ### Dead Letter Queue (DLQ)
 
-Se dispone de una cola de mensajes fallidos.
-
-La configuración contempla que un mensaje sea redirigido a la DLQ después de superar el número permitido de intentos de recepción.
+Se configura una cola para mensajes que exceden el máximo de intentos de recepción. Su existencia no demuestra que se hayan probado fallos forzados.
 
 ### CloudWatch Alarm y SNS
 
-Se configura una alarma para detectar mensajes en la DLQ.
-
-El tema SNS puede utilizarse para enviar notificaciones cuando la alarma se activa, siempre que exista una suscripción configurada y confirmada.
-
-**Nota:** la existencia de estos mecanismos no implica que se hayan ejecutado pruebas de fallo o entrega de alertas. Esas pruebas permanecen pendientes.
+Una alarma observa mensajes en la DLQ y utiliza un tema SNS como destino. La entrega de alertas depende de una suscripción válida y confirmada.
 
 ---
 
-## 17. Atributos de calidad
+## 15. Atributos de calidad
 
-### Disponibilidad
-
-Se utilizan servicios administrados de AWS y una distribución de subredes entre dos zonas de disponibilidad.
-
-Esto contribuye al diseño de disponibilidad, aunque no sustituye una prueba de recuperación ante fallos.
-
-### Escalabilidad
-
-Lambda permite ejecutar procesamiento bajo demanda y SQS ayuda a desacoplar la llegada de eventos del procesamiento.
-
-### Seguridad
-
-Se aplican roles IAM, almacenamiento privado, cifrado y acceso controlado a los recursos.
-
-### Mantenibilidad
-
-La infraestructura se divide en archivos Terraform según su responsabilidad.
-
-### Observabilidad
-
-CloudWatch proporciona registros y métricas de ejecución.
-
-### Tolerancia a fallos
-
-SQS permite reintentos de mensajes y la DLQ permite conservar mensajes que no se procesan correctamente después de los intentos configurados.
-
-### Recuperación
-
-El versionado de S3 contribuye a conservar versiones de los objetos, sujeto a las reglas de ciclo de vida y a la configuración aplicada.
+| Atributo | Implementación | Alcance de validación |
+|---|---|---|
+| Disponibilidad | Servicios administrados y distribución de subredes entre dos zonas | No se ha probado conmutación por fallos |
+| Escalabilidad | Lambda bajo demanda y cola SQS | Sin prueba de carga |
+| Seguridad | IAM, bucket privado, cifrado y firmas temporales | Configuración implementada; requiere revisión adicional para PROD |
+| Mantenibilidad | Terraform organizado por responsabilidades | Despliegue reproducido en DEV y QA |
+| Observabilidad | CloudWatch Logs y alarmas | Logs comprobados en DEV |
+| Tolerancia a fallos | Reintentos de SQS y DLQ | Configurada, sin prueba forzada |
+| Recuperación | Versionado S3 y recreación mediante Terraform | DEV recreable a partir de código; los datos borrados no se recuperan automáticamente |
+| Portabilidad entre entornos | Workspaces y variables `environment` | Despliegues DEV y QA realizados |
 
 ---
 
-## 18. Consideraciones de costos
+## 16. Costos y restricciones
 
-El proyecto utiliza una cuenta AWS con créditos disponibles.
+La infraestructura utiliza servicios de AWS que pueden consumir créditos o generar cargos. **No se debe asumir que todos los recursos son gratuitos**.
 
-Los recursos desplegados pueden consumir créditos o generar cargos según el tipo de cuenta, los servicios utilizados y el tiempo de uso.
+Medidas aplicadas en DEV y QA:
 
-Para DEV se deshabilitaron componentes opcionales de red que podían incrementar el costo:
+- NAT Gateways deshabilitados.
+- Endpoint Interface de SQS deshabilitado.
+- Uso del endpoint Gateway de S3.
+- Despliegue secuencial de entornos en lugar de mantenerlos todos activos.
+- Destrucción de DEV tras finalizar las pruebas.
 
-- NAT Gateway.
-- Endpoint Interface de SQS.
+Buenas prácticas operativas:
 
-Se recomienda:
+1. Revisar el plan antes de cada `apply`.
+2. Consultar los créditos y el consumo en AWS Billing.
+3. Evitar mantener entornos de laboratorio activos sin necesidad.
+4. Guardar las evidencias antes de eliminar recursos.
+5. Confirmar que el plan de PROD sea viable antes de desplegar.
 
-- Desplegar únicamente los entornos necesarios.
-- Revisar los planes antes de ejecutar `terraform apply`.
-- Consultar AWS Billing y los créditos restantes.
-- Evitar mantener recursos de prueba activos sin necesidad.
-- Eliminar los recursos al finalizar las pruebas.
-
-La disponibilidad de créditos no garantiza que todos los recursos estén incluidos en una capa gratuita.
+La eliminación de infraestructura detiene el uso futuro de los recursos efectivamente destruidos, pero no necesariamente elimina cargos o consumo ya acumulados.
 
 ---
 
-## 19. Limpieza de infraestructura
+## 17. Destrucción controlada de infraestructura
 
-Terraform permite eliminar los recursos administrados cuando dejan de ser necesarios.
+**Advertencia:** los siguientes comandos pueden eliminar recursos reales y datos de forma irreversible. Deben utilizarse únicamente después de guardar evidencias, revisar el workspace y autorizar la eliminación.
 
-Antes de ejecutar la destrucción:
+### 17.1. Seleccionar el entorno
 
-1. Confirmar el workspace seleccionado.
-2. Guardar las evidencias necesarias.
-3. Verificar que no existan datos que deban conservarse.
-4. Revisar los recursos que Terraform eliminará.
-5. Considerar que el bucket S3 utiliza versionado y puede contener objetos y versiones anteriores.
-
-### Seleccionar DEV
+Ejemplo QA:
 
 ```powershell
-terraform workspace select dev
+terraform workspace select qa
+terraform workspace show
 ```
 
-### Revisar la destrucción
+### 17.2. Revisar qué se eliminaría
 
 ```powershell
-terraform plan '-destroy' '-var=environment=dev'
+terraform plan '-destroy' '-var=environment=qa'
 ```
 
-### Ejecutar la destrucción
+### 17.3. Revisar el bucket S3 versionado
 
 ```powershell
-terraform destroy '-var=environment=dev'
+$bucket = terraform output -raw s3_bucket_name
+Write-Host "Bucket que se revisará: $bucket"
+
+aws s3api list-object-versions `
+    --bucket $bucket `
+    --query "{Versiones: Versions[].{Archivo:Key,VersionId:VersionId},Marcadores: DeleteMarkers[].{Archivo:Key,VersionId:VersionId}}" `
+    --output json `
+    --profile terraform-lab
 ```
 
-**Advertencia:** el comando anterior elimina recursos reales de AWS y requiere confirmación. Debe ejecutarse únicamente cuando se haya autorizado el cierre del entorno.
+Antes de eliminar versiones o marcadores, verificar que el bucket corresponde a QA y que los objetos de prueba pueden perderse definitivamente. Un simple `aws s3 rm` no garantiza el vaciado de un bucket versionado.
 
-Si el bucket S3 contiene objetos o versiones, la eliminación podría fallar. En ese caso se debe revisar y vaciar el bucket de manera controlada antes de completar la destrucción.
+### 17.4. Ejecutar la destrucción
 
-La ejecución de `terraform destroy` todavía no se documenta como completada.
+**Solo después de vaciar correctamente el bucket y autorizar el cierre:**
+
+```powershell
+terraform destroy '-var=environment=qa'
+```
+
+Terraform solicitará escribir `yes`. Al finalizar correctamente, mostrará `Destroy complete!`.
+
+### 17.5. Verificar el estado
+
+```powershell
+terraform workspace show
+terraform state list
+```
+
+El estado del workspace debería quedar sin recursos administrados. Si la destrucción falla parcialmente, **no borrar los archivos de estado**: corregir el error y volver a planificar la eliminación de los recursos restantes.
+
+### 17.6. Lección aprendida en DEV
+
+Durante el cierre de DEV, Terraform necesitó el permiso `iam:ListInstanceProfilesForRole` para eliminar los roles de Lambda. La política IAM se ajustó y la segunda ejecución completó los dos recursos pendientes. Este permiso debe conservarse para las futuras operaciones de cierre de QA y PROD, con el alcance autorizado correspondiente.
 
 ---
 
-## 20. Control de versiones
+## 18. Plan para PROD
 
-El proyecto utiliza Git y GitHub para mantener un historial de cambios.
+El workspace `prod` ya existe, pero **no se ha documentado ningún despliegue de infraestructura PROD**.
 
-Las modificaciones se organizan por avances de implementación, configuración, pruebas y documentación.
+Antes de desplegar:
 
-Ejemplos de mensajes de commit:
+1. Confirmar la cuenta y los permisos AWS.
+2. Revisar si la configuración de red y seguridad es adecuada para producción.
+3. Evaluar los costos de NAT, endpoints y servicios complementarios.
+4. Verificar los controles de acceso a la API y los límites de solicitudes.
+5. Preparar y revisar el plan de Terraform.
+6. Obtener autorización para crear recursos reales.
 
-```text
-feat: configurar red y subredes AWS
-feat: implementar almacenamiento S3
-feat: configurar colas SQS y DLQ
-feat: implementar funciones Lambda
-feat: integrar API Gateway
-feat: configurar monitoreo CloudWatch y SNS
-docs: documentar pruebas funcionales de DEV
+Comandos de planificación, **sin desplegar todavía**:
+
+```powershell
+terraform workspace select prod
+terraform workspace show
+terraform validate
+terraform plan '-var=environment=prod' '-out=prod.tfplan'
 ```
 
-Estos mensajes son ejemplos de organización; el historial real puede consultarse mediante:
+El despliegue de PROD y sus pruebas se incorporarán a este README cuando se hayan realizado y comprobado.
+
+---
+
+## 19. Control de versiones y publicación
+
+El proyecto utiliza Git y GitHub para documentar la evolución del código y las evidencias.
+
+Ejemplo de publicación de README y evidencias QA desde `terraform/`:
+
+```powershell
+git status --short
+git add ../README.md
+git add ../docs/evidencias/qa/
+git diff --cached --stat
+git commit -m "docs: actualizar README y evidencias de QA"
+git push origin main
+```
+
+Antes del commit, comprobar que no se incluyen secretos, firmas S3 ni archivos temporales.
+
+**No publicar:**
+
+- Credenciales o tokens AWS.
+- Archivos `*.tfstate`, `*.tfstate.backup` o estados de workspaces.
+- Archivos `*.tfplan`.
+- Directorios `.terraform/` y `node_modules/`.
+- Paquetes ZIP de despliegue generados localmente.
+- Respuestas completas de formularios firmados.
+- Imágenes de prueba innecesarias o con información sensible.
+
+Consultar el historial real:
 
 ```powershell
 git log --oneline
 ```
 
-### Archivos que no deben publicarse
-
-- Credenciales AWS.
-- Archivos `.tfstate` y copias de respaldo.
-- Planes `.tfplan`.
-- Directorios `.terraform/`.
-- Directorios `node_modules/`.
-- Paquetes ZIP generados para despliegue.
-- Archivos locales de prueba innecesarios.
-- Archivos con información sensible.
-
 ---
 
-## 21. Estado de los entornos
+## 20. Conclusiones y próximos pasos
 
-| Entorno | Estado | Observaciones |
-|---|---|---|
-| DEV | Desplegado y probado | Flujo principal exitoso |
-| QA | Pendiente de validación | No se registra despliegue confirmado |
-| PROD | Pendiente de validación | No se registra despliegue confirmado |
+La arquitectura se implementó mediante Terraform y **se reprodujo con éxito en dos entornos independientes: DEV y QA**.
+
+En DEV se validó el flujo principal de subida, almacenamiento y procesamiento de imágenes, así como la observabilidad mediante CloudWatch. Posteriormente, se realizó la destrucción controlada de la infraestructura. Durante ese proceso se identificó y resolvió un permiso IAM faltante, lo que permitió finalizar el cierre del entorno.
+
+En QA se desplegaron **50 recursos** y se comprobó la respuesta de API Gateway, la generación de un POST firmado, la subida exitosa de una imagen JPEG a S3 y la creación del archivo PNG procesado. Las capturas correspondientes se recopilaron para el informe.
+
+El proyecto demuestra la utilidad de IaC para reproducir infraestructura, separar entornos, automatizar el procesamiento por eventos y mantener evidencia técnica de las operaciones realizadas.
+
+### Próximas actividades
+
+1. Completar la verificación y organización de evidencias de QA, incluida CloudWatch y las dimensiones exactas si se requiere.
+2. Documentar y ejecutar la destrucción controlada de QA después de vaciar el bucket S3 versionado.
+3. Revisar costos, permisos y configuración antes de decidir el despliegue de PROD.
+4. Ejecutar las pruebas de PROD únicamente si el despliegue es viable y autorizado.
+5. Consolidar las capturas, resultados, limitaciones y conclusiones en el informe final.
 
 ---
-
-## 22. Conclusiones
-
-Se implementó una infraestructura AWS mediante Terraform capaz de recibir y procesar imágenes de manera asíncrona.
-
-Durante las pruebas de DEV se confirmó el funcionamiento de API Gateway, Lambda Upload, Amazon S3, Amazon SQS, Lambda Crop y Amazon CloudWatch dentro del flujo principal de procesamiento.
-
-La imagen JPEG utilizada en la prueba fue almacenada correctamente y se generó una versión PNG con recorte circular.
-
-La arquitectura demuestra el uso práctico de Infraestructura como Código, servicios administrados, procesamiento por eventos, controles de seguridad y observabilidad.
-
-Como trabajo pendiente se consideran las pruebas de recuperación ante fallos, validación de la DLQ, notificaciones SNS, rendimiento bajo carga y despliegues de QA y PROD.
-
-El siguiente paso operativo consiste en completar las evidencias, revisar el repositorio y realizar la destrucción controlada del entorno DEV cuando finalicen las pruebas.
