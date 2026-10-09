@@ -345,7 +345,7 @@ En DEV se verificó el rechazo de una solicitud que declaraba un archivo mayor a
 |---|---|---|---|
 | **DEV** | `50 added, 0 changed, 0 destroyed` | Exitosas: API, validación de tamaño, S3, SQS, Crop y CloudWatch | **Completada**; últimos 2 roles IAM eliminados en reintento |
 | **QA** | `50 added, 0 changed, 0 destroyed` | Exitosas: API, HTTP 204, JPEG y PNG en S3 | **Completada**; últimos 2 roles IAM eliminados en reintento; estado vacío |
-| **PROD** | `50 added, 0 changed, 0 destroyed` | Exitosas: API, HTTP 204, Crop y CloudWatch | **Pendiente de confirmar**: bucket vaciado y plan de `50 to destroy` revisado |
+| **PROD** | `50 added, 0 changed, 0 destroyed` | Exitosas: API, HTTP 204, Crop y CloudWatch | **Completada**: `Destroy complete! Resources: 50 destroyed`; `terraform state list` vacío |
 
 **Nota:** los 50 recursos de cada entorno corresponden a despliegues sucesivos, no necesariamente a 150 recursos simultáneamente activos.
 
@@ -390,7 +390,7 @@ En DEV se verificó el rechazo de una solicitud que declaraba un archivo mayor a
 | Dimensiones 40 × 40 verificadas con inspector | No consta | No consta | No consta |
 | DLQ / SNS con fallo forzado | No probado | No probado | No probado |
 | Prueba de carga | No probada | No probada | No probada |
-| Destrucción confirmada | Sí | Sí | Por confirmar |
+| Destrucción confirmada | Sí | Sí | sí |
 
 ## 8. Seguridad, monitoreo y manejo de fallos
 
@@ -551,7 +551,7 @@ https://github.com/JParedesCajo/IcC-ProcesadorDeImagenes
 
 Se implementó y reprodujo una arquitectura AWS mediante Terraform en **DEV, QA y PROD**, con 50 recursos creados por despliegue. Las pruebas demostraron la integración de API Gateway, Lambda Upload, Amazon S3, Amazon SQS y Lambda Crop para procesar imágenes de forma asíncrona. CloudWatch permitió verificar las ejecuciones y observar métricas puntuales.
 
-Los entornos **DEV y QA** fueron cerrados mediante Terraform; ambos cierres permitieron identificar y resolver un problema de permisos IAM durante la eliminación de roles. En **PROD**, se verificó el funcionamiento del flujo principal, se vació el bucket versionado y se preparó el plan de destrucción. La confirmación de la destrucción final deberá incorporarse cuando esté disponible.
+Los entornos **DEV y QA** fueron cerrados mediante Terraform; ambos cierres permitieron identificar y resolver un problema de permisos IAM durante la eliminación de roles. En **PROD**, se verificó el funcionamiento del flujo principal, se vació el bucket versionado y se ejecutó la destrucción completa (`Destroy complete! Resources: 50 destroyed`), con el estado de Terraform vacío.
 
 El proyecto demuestra **automatización, reproducibilidad, separación de entornos, seguridad básica, observabilidad y gestión responsable de recursos**. Como mejoras futuras quedan la autenticación y protección de la API, pruebas de carga, simulación de fallos, verificación independiente de dimensiones y validación de alertas DLQ/SNS.
 
